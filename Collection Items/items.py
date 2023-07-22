@@ -1,3 +1,9 @@
+########### DDO LOOT WEBSCRAPER ###########
+# AUTHOR    : JUSTIN BELTER
+# DATE      : 07212023
+# REVISION  : 1.0
+###########################################
+
 from bs4 import BeautifulSoup
 import requests
 import re
