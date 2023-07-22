@@ -1,0 +1,25 @@
+{
+    "update": 5,
+    "item_name": null,
+    "binding": "Bound to Character on Acquire",
+    "charges": "25 / 25",
+    "material": "Wood",
+    "hardness": 10,
+    "weight": "0.10 lbs",
+    "location": [
+        "The Maleficent Cabal, End reward"
+    ],
+    "enchantments": [
+        "Burning Hands",
+        "Combustion +55",
+        "Fire Lore +8%"
+    ],
+    "augment_slots": [],
+    "item_sets": [],
+    "upgadeable": "None",
+    "description": "A thin rod of blackened wood containing charges of the Burning Hands spell. Eternal wands recharge over time if they are not actively being used.",
+    "notes": [
+        "",
+        ""
+    ]
+}
