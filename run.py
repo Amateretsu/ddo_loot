@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from dotenv import dotenv_values
-import requests, sys, mysql.connector, logging, json
+import requests, sys, mysql.connector, logging, re, json
 from mysql.connector import errorcode
 import tools.column_mappings as column_mappings
 
@@ -103,6 +103,104 @@ class ddo_item:
             except Exception as e:
                 logging.error(f"Failed to parse HTML from {self.url}. Full trace: {e}")
     
+    def verify_data(self) -> bool:
+        # Define column names and types
+        column_types = {
+            'accepts_sentience': bool,
+            'arcane_spell_failure': float,
+            'armor_bonus': int,
+            'armor_check_penalty': int,
+            'armor_type': str,
+            'attack_mod': str,
+            'base_value': str,
+            'binding': str,
+            'critical_multiplier': int,
+            'critical_threat_range': str,
+            'critical_threat_percent': float,
+            'damage': str,
+            'damage_multiplier': float,
+            'damage_dice': str,
+            'damage_bonus': int,
+            'damage_range_min': int,
+            'damage_range_max': int,
+            'damage_mod': str,
+            'damage_reduction': str,
+            'damage_type': str,
+            'description': str,
+            'durability': int,
+            'enchantments': list,
+            'augments': list,
+            'feat_requirement': str,
+            'handedness': str,
+            'hardness': int,
+            'item_name': str,
+            'item_slot': str,
+            'item_type': str,
+            'location': list,
+            'material': str,
+            'maximum_dexterity_bonus': int,
+            'minimum_level': int,
+            'mythic_bonus': list,
+            'named_item_sets': list,
+            'notes': str,
+            'proficiency_required': str,
+            'race_absolutely_excluded': str,
+            'race_absolutely_required': str,
+            'required_trait': str,
+            'shield_bonus': int,
+            'shield_type': str,
+            'tips': str,
+            'upgradeable': str,
+            'use_magic_device_dc': int,
+            'weapon_type': str,
+            'weight': float
+        }
+        logging.info(f"Verifying {self.data["item_name"]} for the correct column types.")
+        for key,value in self.data.items():
+            if key in column_types.keys():
+                value_type = type(value).__name__
+                column_type = column_types[key].__name__
+                logging.debug(f"{self.item_name} -> key={key}, value={value}, value_type={type(self.data[key]).__name__}, expected_type={column_type}")
+                if (value_type != column_type):
+                    try:
+                        match column_type:
+                            case "str":
+                                self.data[key] = str(value)
+                            case "int":
+                                if key == "use_magic_device_dc" and value == "No UMD needed": value = 0
+                                self.data[key] = int(value)
+                            case "float":
+                                if key == "weight": value = value.replace(" lbs","")
+                                self.data[key] = float(value)
+                            case "bool":
+                                if key == "arcane_spell_failure":
+                                    if value > 1: value = value/100
+                                if value.lower() in ["yes","true"]:
+                                    self.data[key] = True
+                                elif value.lower() in ["no","false"]:
+                                    self.data[key] = False
+                                else:
+                                    logging.error(f"Could not mutate type of {self.data[key]} to boolean. Value={value}.")
+                            case "list":
+                                self.data[key] = [value]
+
+                        if type(self.data[key]).__name__ != column_type:
+                            logging.error(f"{self.item_name} still has the wrong data type for the {key} column. Should be {column_type}.")
+                            logging.debug(f"{self.item_name} -> key={key}, value={value}, value_type={type(self.data[key]).__name__}, expected_type={column_type}")
+                            return False
+                        
+                    except Exception as e:
+                        logging.error(f"Unknown error occured. Full trace: {e}")
+                        return False
+            else:
+                logging.error(f"{key} not found in column names, please update the 'verify_columns' method in the 'ddo_item' class.")
+                return False
+
+        # All columns were verified
+        logging.info(f"{self.item_name} was successfully verfied!")
+        return True
+
+
     # Remove any tooltip text so we don't have duplicate text in our database
     def remove_tooltip(self,object:object) -> object:
         try:
@@ -187,6 +285,7 @@ class ddo_item:
         try:
             source = self.sourceCode # Get our source code for the url
             self.data["item_name"] = source.find("span",{"class":"mw-headline"}).text # Get the item name
+            self.item_name = self.data["item_name"]
             try:
                 table = source.find("tbody") # Find the beginning of the data table
                 try:
@@ -203,8 +302,27 @@ class ddo_item:
                                 value = self.get_list_items(ul,enchantments,cnt)
                         else: # If no list item, then convert to string
                             value = self.to_text(td)
-                        self.data[key] = value # Update our item_data object
-                    
+
+                        # Create additional damage attributes
+                        if key == "damage_and_type":
+                            pattern = r"^(?P<damage_multiplier>[^\[]*)\[(?P<damage_dice>\d\w\d+)[^\]]*\]\s*(?P<damage_bonus>[\+-]*\s*\d*)\s*(?P<damage_type>.*)"
+                            dmg_regex = re.search(pattern,value)
+                            if (dmg_regex):
+                                self.data["damage"] = value
+                                self.data["damage_multiplier"] = float(dmg_regex.group("damage_multiplier"))
+                                self.data["damage_dice"] = dmg_regex.group("damage_dice")
+                                self.data["damage_bonus"] = int(dmg_regex.group("damage_bonus").replace(" ",""))
+                                self.data["damage_type"] = dmg_regex.group("damage_type")
+
+                        # Seperate critical values
+                        elif key == "critical_roll_and_multiplier":
+                            pattern = r"^(?P<critical_threat_range>\d*-\d*)\s*/\s*x(?P<critical_multiplier>\d*)"
+                            crit_regex = re.search(pattern,value)
+                            if (crit_regex):
+                                self.data["critical_threat_range"] = crit_regex.group("critical_threat_range")
+                                self.data["critical_multiplier"] = crit_regex.group("critical_multiplier")
+                        else:
+                            self.data[key] = value # Update our item_data object
                     # Split the enchantments into the proper sections
                     enchantments,augments,sets,mythic = self.split_enchantments(self.data)
                     self.data["enchantments"] = enchantments
@@ -212,8 +330,13 @@ class ddo_item:
                     self.data["named_item_sets"] = sets
                     self.data["mythic_bonus"] = mythic
 
-                    # Return our item_data object
-                    return self.data
+                    # Verify data
+                    if (self.verify_data()):
+                        # Return our item_data object
+                        return self.data
+                    else: 
+                        logging.error(f"{self.item_name} data verification failed!")
+                        sys.exit()
                 except Exception as e:
                     logging.error(f"Failed to find 'tr' tag(s) in source code for {self.url}. Full trace: {e}")
             except Exception as e:
@@ -233,7 +356,7 @@ class ddo_item:
             select_query = f"SELECT * FROM {self.table} WHERE {where_clause}"
             results = self.mysql_connection.query(select_query) # Does this item already exist?
             if (len(results) == 0): # Item does not exist, so create new row
-                logging.info(f"{self.data["item_name"]} does not exist in the database. Creating new row...")
+                logging.info(f"{self.item_name} does not exist in the database. Creating new row...")
                 columns = ', '.join(data_str.keys())
                 placeholders = ', '.join(['%s' for _ in data_str.values()])
                 values = tuple(data_str.values())
@@ -242,10 +365,10 @@ class ddo_item:
                     self.mysql_connection.query(insert_query,values)
                     logging.info(f"Successfully added {self.data["item_name"]}!")
                 except Exception as e:
-                    logging.error(f"Failed to insert item into database. Item Name: {self.data['item_name']} - Full trace: {e}")
+                    logging.error(f"Failed to insert item into database. Item Name: {self.item_name} - Full trace: {e}")
             else:
-                logging.info(f"{self.data["item_name"]} already exists in the database.")
-                logging.debug(f"{self.data["item_name"]} - select_query returned {len(results)} rows.")
+                logging.info(f"{self.item_name} already exists in the database.")
+                logging.debug(f"{self.item_name} - select_query returned {len(results)} rows.")
         except:
             logging.error(f"Failed to insert {self.data["item_name"]} into database.")
 
@@ -291,6 +414,7 @@ if __name__ == "__main__":
         database=env_vars["DATABASE_NAME"]
     )
 
-    item = ddo_item("https://ddowiki.com/page/Item:Docent_of_Shadow_(level_32)#google_vignette")
-
+    item = ddo_item("https://ddowiki.com/page/Item:Eidolon_of_the_Shadow")
+    with open("item.json","w") as f:
+        f.write(json.dumps(item.data,indent=2))
     item.insert_into_database(connection)
