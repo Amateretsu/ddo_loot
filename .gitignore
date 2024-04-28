@@ -4,6 +4,7 @@
 /**/.env
 /**/*.json
 /.vscode
+/logs
 /Collection Items
 
 #### PYTHON DEFAULT .gitignore
