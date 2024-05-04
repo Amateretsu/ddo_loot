@@ -414,7 +414,9 @@ if __name__ == "__main__":
         database=env_vars["DATABASE_NAME"]
     )
 
-    item = ddo_item("https://ddowiki.com/page/Item:Eidolon_of_the_Shadow")
-    with open("item.json","w") as f:
-        f.write(json.dumps(item.data,indent=2))
-    item.insert_into_database(connection)
+    COUNT = 0
+    while (COUNT < 25):
+        item = ddo_item("https://ddowiki.com/page/Item:Eidolon_of_the_Shadow")
+        with open("item.json","w") as f:
+            f.write(json.dumps(item.data,indent=2))
+        item.insert_into_database(connection)

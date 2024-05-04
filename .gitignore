@@ -6,6 +6,8 @@
 /.vscode
 /logs
 /Collection Items
+/html
+/html_pretty
 
 #### PYTHON DEFAULT .gitignore
 

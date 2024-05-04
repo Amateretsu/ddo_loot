@@ -31,7 +31,7 @@ The following terms and definitions will be used in the entirety of this documen
 >
 > **G**: Generated
 
-## ddoloot_base_item
+## ddoloot_named_items
 
 This is the table that stores the information of the item
 
